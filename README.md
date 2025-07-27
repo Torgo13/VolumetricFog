@@ -60,6 +60,11 @@ If VRS is supported, we continue by creating a VRS Look-Up Table (LUT). This tab
   VrsLut lut = new VrsLut();
   lut = VrsLut.CreateDefault();
 
+  // Get the render pipeline's conversion look-up table 
+  var vrsPipelineResources = GraphicsSettings.GetRenderPipelineSettings<VrsRenderPipelineRuntimeResources>();
+  lut = vrsPipelineResources.conversionLookupTable;
+  vrsPipelineResources.visualizationLookupTable = lut;
+
   if (m_Material == null) {
       m_Material = new Material(Resources.Load<Shader>("Shaders/GenerateVRS"));
       m_Material.SetColor("_ShadingRateColor1x1", lut[ShadingRateFragmentSize.FragmentSize1x1]);
