@@ -11,7 +11,9 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
 {
     #region FEATURE_FIELDS
     [SerializeField]
+#if ZERO
     [HideInInspector]
+#endif // ZERO
     private Material m_Material;
     [SerializeField] private bool m_ApplyVRS;
 
@@ -24,9 +26,8 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
     public override void Create()
     {
 #if UNITY_EDITOR
-
         if (m_Material == null)
-            m_Material = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/MyStuff/Volumetrics/VolumetricFog_Mat.mat");
+            m_Material = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Packages/com.tw0catsgames.volumetric-fog/ShadingRate/Volumetrics/VolumetricFog_Mat.mat");
 #endif
 
         if(m_Material)
@@ -50,7 +51,7 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
             return;
 
         m_FullScreenPass.renderPassEvent = RenderPassEvent.BeforeRenderingPostProcessing;
-        
+
         m_FullScreenPass.ConfigureInput(ScriptableRenderPassInput.Depth);
 
         renderer.EnqueuePass(m_FullScreenPass);
@@ -58,29 +59,44 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
 
     #endregion
 
+    sealed
     private class CustomPostRenderPass : ScriptableRenderPass
     {
         #region PASS_FIELDS
 
         // The material used to render the post-processing effect
+        readonly
         private Material m_Material;
 
         // The handle to the temporary color copy texture (only used in the non-render graph path)
         private RTHandle m_CopiedColor;
 
         // The property block used to set additional properties for the material
+        readonly
         private static MaterialPropertyBlock s_SharedPropertyBlock = new MaterialPropertyBlock();
 
         // This constant is meant to showcase how to create a copy color pass that is needed for most post-processing effects
-        private static readonly bool kCopyActiveColor = false;
+        private const bool kCopyActiveColor = false;
 
-        // This constant is meant to showcase how you can add dept-stencil support to your main pass
+#if UNUSED
+        // This constant is meant to showcase how you can add depth-stencil support to your main pass
         private static readonly bool kBindDepthStencilAttachment = false;
+#endif // UNUSED
 
         // Creating some shader properties in advance as this is slightly more efficient than referencing them by string
         private static readonly int kBlitTexturePropertyId = Shader.PropertyToID("_BlitTexture");
         private static readonly int kBlitScaleBiasPropertyId = Shader.PropertyToID("_BlitScaleBias");
 
+        private static readonly int kBackScattering = Shader.PropertyToID("_BackScattering");
+        private static readonly int kForwardScattering = Shader.PropertyToID("_ForwardScattering");
+        private static readonly int kForwardScatterColor = Shader.PropertyToID("_ForwardScatterColor");
+        private static readonly int kBackScatterColor = Shader.PropertyToID("_BackScatterColor");
+        private static readonly int kFogIntensity = Shader.PropertyToID("_FogIntensity");
+        private static readonly int kFogColor = Shader.PropertyToID("_FogColor");
+        private static readonly int kSteps = Shader.PropertyToID("_Steps");
+        private static readonly int kDistance = Shader.PropertyToID("_Distance");
+
+        readonly
         private bool m_vrsEnabled;
 
         #endregion
@@ -90,6 +106,7 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
             profilingSampler = new ProfilingSampler(passName);
             m_Material = material;
             m_vrsEnabled = enableVRS;
+            m_vrsEnabled &= ShadingRateInfo.supportsPerImageTile;
 
             // * The 'requiresIntermediateTexture' field needs to be set to 'true' when a ScriptableRenderPass intends to sample
             //   the active color buffer
@@ -115,19 +132,19 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
 
             // This uniform needs to be set for user materials with shaders relying on core Blit.hlsl to work as expected
             s_SharedPropertyBlock.SetVector(kBlitScaleBiasPropertyId, new Vector4(1, 1, 0, 0));
-            
+
             VolumetricFogVolumeComponent myVolume = VolumeManager.instance.stack?.GetComponent<VolumetricFogVolumeComponent>();
             if (myVolume != null)
             {
-                s_SharedPropertyBlock.SetFloat("_BackScattering", myVolume.backScattering.value);
-                s_SharedPropertyBlock.SetFloat("_ForwardScattering", myVolume.forwardScattering.value);
-                s_SharedPropertyBlock.SetColor("_ForwardScatterColor", myVolume.forwardScatterColor.value);
-                s_SharedPropertyBlock.SetColor("_BackScatterColor", myVolume.backScatterColor.value);
-                s_SharedPropertyBlock.SetFloat("_FogIntensity", myVolume.fogIntensity.value);
-                s_SharedPropertyBlock.SetColor("_FogColor", myVolume.fogColor.value);
-                s_SharedPropertyBlock.SetFloat("_Steps", myVolume.stepCount.value);
-                s_SharedPropertyBlock.SetFloat("_Distance", myVolume.distance.value);
-                
+                s_SharedPropertyBlock.SetFloat(kBackScattering, myVolume.backScattering.value);
+                s_SharedPropertyBlock.SetFloat(kForwardScattering, myVolume.forwardScattering.value);
+                s_SharedPropertyBlock.SetColor(kForwardScatterColor, myVolume.forwardScatterColor.value);
+                s_SharedPropertyBlock.SetColor(kBackScatterColor, myVolume.backScatterColor.value);
+                s_SharedPropertyBlock.SetFloat(kFogIntensity, myVolume.fogIntensity.value);
+                s_SharedPropertyBlock.SetColor(kFogColor, myVolume.fogColor.value);
+                s_SharedPropertyBlock.SetFloat(kSteps, myVolume.stepCount.value);
+                s_SharedPropertyBlock.SetFloat(kDistance, myVolume.distance.value);
+
                 LocalKeyword bayerOffsetKeyword = new LocalKeyword(material.shader, "USE_BAYER_OFFSET");
                 material.SetKeyword(bayerOffsetKeyword, myVolume.bayerOffset.value);
             }
@@ -164,6 +181,7 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
         }
 
         // The custom main pass data that will be passed at render graph execution to the lambda we set with "SetRenderFunc" during render graph setup
+        sealed
         private class MainPassData
         {
             public Material material;
@@ -180,8 +198,10 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             UniversalResourceData resourcesData = frameData.Get<UniversalResourceData>();
+#if UNUSED
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalRenderer renderer = (UniversalRenderer) cameraData.renderer;
+#endif // UNUSED
 
             using (var builder = renderGraph.AddRasterRenderPass<MainPassData>("Volumetrics Pass", out var passData, profilingSampler))
             {
@@ -189,23 +209,24 @@ public sealed class VolumetricFogRendererFeature : ScriptableRendererFeature
                 builder.SetRenderAttachment(resourcesData.activeColorTexture, 0, AccessFlags.Write);
 
                 if(m_vrsEnabled && frameData.Contains<ShadingRateFeature.VRSData>()) {
+#if DEBUG
                     if (ShadingRateInfo.supportsPerImageTile) {
+#endif // DEBUG
                         var vrsData = frameData.Get<ShadingRateFeature.VRSData>();
                         if (vrsData.sri.IsValid())
                         {
                             builder.SetShadingRateImageAttachment(vrsData.sri);
                             builder.SetShadingRateCombiner(ShadingRateCombinerStage.Fragment,
-                            ShadingRateCombiner.Override);
+                                ShadingRateCombiner.Override);
                         }
+#if DEBUG
                     } else {
                         Debug.Log("Trying to enable VRS, but it is not supported on this device");
                     }
+#endif // DEBUG
                 }
 
-                builder.SetRenderFunc((MainPassData data, RasterGraphContext context) =>
-                {
-                    ExecuteMainPass(data, context);
-                });
+                builder.SetRenderFunc(static (MainPassData data, RasterGraphContext context) => ExecuteMainPass(data, context));
             }
         }
         #endregion
