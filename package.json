@@ -1,0 +1,19 @@
+{
+  "name": "com.tw0catsgames.volumetric-fog",
+  "version": "0.1.0",
+  "displayName": "VolumetricFog Renderer Feature",
+  "description": "VolumetricFog Renderer Feature",
+  "unity": "6000.3",
+  "unityRelease": "3f1",
+  "documentationUrl": "https://github.com/Torgo13/VolumetricFog/",
+  "license": "Unity Companion License",
+  "licensesUrl": "https://github.com/Torgo13/VolumetricFog/blob/main/LICENSE.md",
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "17.3.0"
+  },
+  "keywords": [
+    "unity",
+    "rendering",
+    "graphics"
+  ]
+}
